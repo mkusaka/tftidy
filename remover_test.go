@@ -193,6 +193,101 @@ func TestNormalizeConsecutiveNewlines(t *testing.T) {
 	}
 }
 
+func TestNormalizeConsecutiveNewlinesCRLF(t *testing.T) {
+	t.Parallel()
+
+	input := []byte("a\r\n\r\n\r\nb\r\n\r\n")
+	got := normalizeConsecutiveNewlines(input)
+
+	if string(got) != "a\r\n\r\nb\r\n" {
+		t.Fatalf("unexpected normalized output: %q", string(got))
+	}
+}
+
+func TestRemoveBlocksOnlyTargetBlocks(t *testing.T) {
+	t.Parallel()
+
+	input := `moved {
+  from = aws_instance.old
+  to   = aws_instance.new
+}
+
+import {
+  to = aws_instance.new
+  id = "i-abc"
+}
+`
+
+	output, counts, err := removeBlocks([]byte(input), "main.tf", []string{"moved", "import"})
+	if err != nil {
+		t.Fatalf("removeBlocks failed: %v", err)
+	}
+
+	if counts["moved"] != 1 || counts["import"] != 1 {
+		t.Fatalf("unexpected counts: %#v", counts)
+	}
+	if strings.TrimSpace(string(output)) != "" {
+		t.Fatalf("expected file to become empty/whitespace only, got:\n%s", string(output))
+	}
+}
+
+func TestRemoveBlocksCommentedBlocksRemain(t *testing.T) {
+	t.Parallel()
+
+	input := `resource "aws_instance" "main" {
+  ami = "ami-123456"
+}
+
+# moved {
+#   from = aws_instance.old
+#   to   = aws_instance.main
+# }
+`
+
+	output, counts, err := removeBlocks([]byte(input), "main.tf", []string{"moved"})
+	if err != nil {
+		t.Fatalf("removeBlocks failed: %v", err)
+	}
+
+	if len(counts) != 0 {
+		t.Fatalf("expected no removals for commented block, got %#v", counts)
+	}
+	if !bytes.Equal(output, []byte(input)) {
+		t.Fatalf("commented block should remain untouched")
+	}
+}
+
+func TestRemoveBlocksTrailingTargetBlockWithNormalize(t *testing.T) {
+	t.Parallel()
+
+	input := `module "hoge" {
+  source = "fuga"
+}
+
+moved {
+  from = module.old_hoge
+  to   = module.hoge
+}
+`
+
+	output, counts, err := removeBlocks([]byte(input), "main.tf", []string{"moved"})
+	if err != nil {
+		t.Fatalf("removeBlocks failed: %v", err)
+	}
+	if counts["moved"] != 1 {
+		t.Fatalf("expected one moved removal, got %#v", counts)
+	}
+
+	normalized := normalizeConsecutiveNewlines(output)
+	expected := `module "hoge" {
+  source = "fuga"
+}
+`
+	if string(normalized) != expected {
+		t.Fatalf("unexpected normalized content\nexpected:\n%s\nactual:\n%s", expected, string(normalized))
+	}
+}
+
 func containsBlockDeclaration(content, blockType string) bool {
 	trimmed := strings.TrimSpace(content)
 	if strings.HasPrefix(trimmed, blockType+" {") {

@@ -97,6 +97,16 @@ Preview only (no file writes):
 tftidy --dry-run ./terraform
 ```
 
+## Example Files
+
+Legacy example sets were migrated into this repository under `examples/`.
+
+- `examples/moved/`
+- `examples/removed/`
+- `examples/import/`
+
+See `examples/README.md` for a quick walkthrough.
+
 ## Migration from legacy tools
 
 ### Command migration paths

@@ -64,6 +64,8 @@ If `directory` is not specified, the current directory is used.
   Preview changes without modifying files.
 - `-v, --verbose`
   Show each file being processed.
+- `--remove-comments`
+  Also remove leading comments attached to removed blocks.
 - `--normalize-whitespace`
   Normalize consecutive blank lines after removal.
 - `--version`

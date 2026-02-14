@@ -73,16 +73,24 @@ runs:
           echo "tag=${ref}" >> "${GITHUB_OUTPUT}"
           exit 0
         fi
-        # Partial ref (v0, v1) -> find latest matching release
-        # GitHub API returns releases in reverse chronological order, so first match is latest
-        tag=$(gh api "repos/${repo}/releases" \
-          --paginate --jq '.[].tag_name' \
-          | grep -E "^${ref}\." \
-          | head -1)
+        # Major version tag (v0, v1) -> find latest matching release
+        if echo "${ref}" | grep -qE '^v[0-9]+$'; then
+          tag=$(gh api "repos/${repo}/releases" \
+            --paginate --jq '.[].tag_name' \
+            | grep -E "^${ref}\." \
+            | head -1)
+          if [ -n "${tag}" ]; then
+            echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+        fi
+        # Commit SHA, branch, or unmatched ref -> fall back to latest release
+        tag=$(gh api "repos/${repo}/releases/latest" --jq '.tag_name')
         if [ -z "${tag}" ]; then
-          echo "::error::No release found matching '${ref}' in ${repo}"
+          echo "::error::No releases found in ${repo}"
           exit 1
         fi
+        echo "::notice::Resolved '${ref}' to latest release '${tag}'"
         echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
 
     - name: Download and install tftidy

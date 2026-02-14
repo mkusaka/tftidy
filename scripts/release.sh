@@ -54,7 +54,12 @@ if git rev-parse "${tag}" >/dev/null 2>&1; then
 fi
 
 # Show what will be released
-echo "${latest} -> ${tag} (${bump})"
+major_tag="${tag%%.*}"
+if [ -n "${latest:-}" ]; then
+  echo "${latest} -> ${tag} (${arg})"
+else
+  echo "Release: ${tag}"
+fi
 echo "Commit: $(git log --oneline -1)"
 echo "Branch: $(git branch --show-current)"
 echo ""
@@ -71,6 +76,6 @@ echo ""
 echo "Tag '${tag}' pushed. GitHub Actions will:"
 echo "  1. Build binaries for 5 platforms via goreleaser"
 echo "  2. Create GitHub Release with assets"
-echo "  3. Update major version tag (v${major})"
+echo "  3. Update major version tag (${major_tag})"
 echo ""
 echo "Monitor: https://github.com/mkusaka/tftidy/actions"

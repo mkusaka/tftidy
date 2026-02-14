@@ -32,6 +32,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	rawTypes := fs.StringP("type", "t", "moved,removed,import", "Block types to remove, comma-separated")
 	dryRun := fs.BoolP("dry-run", "n", false, "Preview changes without modifying files")
 	verbose := fs.BoolP("verbose", "v", false, "Show each file being processed")
+	removeComments := fs.Bool("remove-comments", false, "Also remove leading comments attached to removed blocks")
 	normalizeWhitespace := fs.Bool("normalize-whitespace", false, "Normalize consecutive blank lines after removal")
 	showVersion := fs.Bool("version", false, "Show version")
 	showHelp := fs.BoolP("help", "h", false, "Show help")
@@ -109,7 +110,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			continue
 		}
 
-		updated, counts, err := removeBlocks(content, path, blockTypes)
+		updated, counts, err := removeBlocks(content, path, blockTypes, *removeComments)
 		if err != nil {
 			recordFileError(stderr, path, err, &st)
 			continue
@@ -208,6 +209,7 @@ func printUsage(w io.Writer) {
 	writeln(w, "  -t, --type string              Block types to remove, comma-separated (default \"moved,removed,import\")")
 	writeln(w, "  -n, --dry-run                  Preview changes without modifying files")
 	writeln(w, "  -v, --verbose                  Show each file being processed")
+	writeln(w, "      --remove-comments          Also remove leading comments attached to removed blocks")
 	writeln(w, "      --normalize-whitespace     Normalize consecutive blank lines after removal")
 	writeln(w, "      --version                  Show version")
 	writeln(w, "  -h, --help                     Show help")

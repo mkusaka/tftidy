@@ -355,3 +355,58 @@ resource "aws_s3_bucket" "data" {
 		t.Fatalf("normalized output should not contain 3 consecutive newlines:\n%s", string(normalizedContent))
 	}
 }
+
+func TestIntegrationRunRemoveComments(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	file := filepath.Join(tempDir, "main.tf")
+	input := `resource "aws_instance" "main" {
+  ami = "ami-123456"
+}
+
+# This comment describes the moved block
+# It has multiple lines
+moved {
+  from = aws_instance.old
+  to   = aws_instance.main
+}
+
+# This is an unrelated comment
+
+resource "aws_s3_bucket" "data" {
+  bucket = "example-bucket"
+}
+`
+	if err := os.WriteFile(file, []byte(input), 0o644); err != nil {
+		t.Fatalf("failed to write file: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run([]string{"--type", "moved", "--remove-comments", tempDir}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d stderr=%s", code, stderr.String())
+	}
+
+	content, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatalf("failed to read file: %v", err)
+	}
+	result := string(content)
+	if containsBlockDeclaration(result, "moved") {
+		t.Fatalf("moved block should be removed:\n%s", result)
+	}
+	if strings.Contains(result, "# This comment describes the moved block") {
+		t.Fatalf("leading comment should be removed with --remove-comments:\n%s", result)
+	}
+	if strings.Contains(result, "# It has multiple lines") {
+		t.Fatalf("second leading comment line should be removed:\n%s", result)
+	}
+	if !strings.Contains(result, "# This is an unrelated comment") {
+		t.Fatalf("unrelated comment (separated by blank line) should remain:\n%s", result)
+	}
+	if !strings.Contains(result, `resource "aws_s3_bucket" "data"`) {
+		t.Fatalf("non-target resource should remain:\n%s", result)
+	}
+}

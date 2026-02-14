@@ -15,7 +15,46 @@ type byteRange struct {
 	end   int
 }
 
-func removeBlocks(content []byte, filename string, blockTypes []string) ([]byte, map[string]int, error) {
+func removeBlocks(content []byte, filename string, blockTypes []string, removeComments bool) ([]byte, map[string]int, error) {
+	if removeComments {
+		return removeBlocksWithComments(content, filename, blockTypes)
+	}
+	return removeBlocksPreservingComments(content, filename, blockTypes)
+}
+
+// removeBlocksWithComments uses hclwrite.RemoveBlock which naturally removes
+// leading comments attached to the block (hclwrite stores them as child tokens).
+func removeBlocksWithComments(content []byte, filename string, blockTypes []string) ([]byte, map[string]int, error) {
+	file, diags := hclwrite.ParseConfig(content, filename, hcl.Pos{Line: 1, Column: 1})
+	if diags.HasErrors() {
+		return nil, nil, fmt.Errorf("failed to parse %s: %s", filename, diags.Error())
+	}
+
+	typeSet := make(map[string]struct{}, len(blockTypes))
+	for _, blockType := range blockTypes {
+		typeSet[blockType] = struct{}{}
+	}
+
+	counts := make(map[string]int, len(blockTypes))
+	body := file.Body()
+	for _, block := range body.Blocks() {
+		if _, ok := typeSet[block.Type()]; !ok {
+			continue
+		}
+		body.RemoveBlock(block)
+		counts[block.Type()]++
+	}
+
+	if sumCounts(counts) == 0 {
+		return content, map[string]int{}, nil
+	}
+
+	return hclwrite.Format(file.Bytes()), counts, nil
+}
+
+// removeBlocksPreservingComments uses hclsyntax to get precise byte ranges
+// that exclude leading comments, then removes blocks at the byte level.
+func removeBlocksPreservingComments(content []byte, filename string, blockTypes []string) ([]byte, map[string]int, error) {
 	syntaxFile, diags := hclsyntax.ParseConfig(content, filename, hcl.Pos{Line: 1, Column: 1})
 	if diags.HasErrors() {
 		return nil, nil, fmt.Errorf("failed to parse %s: %s", filename, diags.Error())

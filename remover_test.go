@@ -59,7 +59,7 @@ resource "aws_s3_bucket" "data" {
 }
 `
 
-			output, counts, err := removeBlocks([]byte(input), "main.tf", []string{tc.blockType})
+			output, counts, err := removeBlocks([]byte(input), "main.tf", []string{tc.blockType}, false)
 			if err != nil {
 				t.Fatalf("removeBlocks failed: %v", err)
 			}
@@ -101,7 +101,7 @@ import {
 }
 `
 
-	output, counts, err := removeBlocks([]byte(input), "main.tf", []string{"moved", "import"})
+	output, counts, err := removeBlocks([]byte(input), "main.tf", []string{"moved", "import"}, false)
 	if err != nil {
 		t.Fatalf("removeBlocks failed: %v", err)
 	}
@@ -133,7 +133,7 @@ ami = "ami-123456"
 }
 `)
 
-	output, counts, err := removeBlocks(input, "main.tf", []string{"moved"})
+	output, counts, err := removeBlocks(input, "main.tf", []string{"moved"}, false)
 	if err != nil {
 		t.Fatalf("removeBlocks failed: %v", err)
 	}
@@ -159,7 +159,7 @@ moved {
 }
 `
 
-	output, _, err := removeBlocks([]byte(input), "main.tf", []string{"moved"})
+	output, _, err := removeBlocks([]byte(input), "main.tf", []string{"moved"}, false)
 	if err != nil {
 		t.Fatalf("removeBlocks failed: %v", err)
 	}
@@ -176,7 +176,7 @@ moved {
 func TestRemoveBlocksInvalidHCL(t *testing.T) {
 	t.Parallel()
 
-	_, _, err := removeBlocks([]byte("this is not valid HCL"), "main.tf", []string{"moved"})
+	_, _, err := removeBlocks([]byte("this is not valid HCL"), "main.tf", []string{"moved"}, false)
 	if err == nil {
 		t.Fatal("expected parse error, got nil")
 	}
@@ -218,7 +218,7 @@ import {
 }
 `
 
-	output, counts, err := removeBlocks([]byte(input), "main.tf", []string{"moved", "import"})
+	output, counts, err := removeBlocks([]byte(input), "main.tf", []string{"moved", "import"}, false)
 	if err != nil {
 		t.Fatalf("removeBlocks failed: %v", err)
 	}
@@ -244,7 +244,7 @@ func TestRemoveBlocksCommentedBlocksRemain(t *testing.T) {
 # }
 `
 
-	output, counts, err := removeBlocks([]byte(input), "main.tf", []string{"moved"})
+	output, counts, err := removeBlocks([]byte(input), "main.tf", []string{"moved"}, false)
 	if err != nil {
 		t.Fatalf("removeBlocks failed: %v", err)
 	}
@@ -270,7 +270,7 @@ moved {
 }
 `
 
-	output, counts, err := removeBlocks([]byte(input), "main.tf", []string{"moved"})
+	output, counts, err := removeBlocks([]byte(input), "main.tf", []string{"moved"}, false)
 	if err != nil {
 		t.Fatalf("removeBlocks failed: %v", err)
 	}
@@ -285,6 +285,140 @@ moved {
 `
 	if string(normalized) != expected {
 		t.Fatalf("unexpected normalized content\nexpected:\n%s\nactual:\n%s", expected, string(normalized))
+	}
+}
+
+func TestRemoveBlocksWithRemoveComments(t *testing.T) {
+	t.Parallel()
+
+	input := `resource "aws_instance" "main" {
+  ami = "ami-123456"
+}
+
+# This comment describes the moved block
+moved {
+  from = aws_instance.old
+  to   = aws_instance.main
+}
+`
+
+	output, counts, err := removeBlocks([]byte(input), "main.tf", []string{"moved"}, true)
+	if err != nil {
+		t.Fatalf("removeBlocks failed: %v", err)
+	}
+	if counts["moved"] != 1 {
+		t.Fatalf("expected one moved removal, got %#v", counts)
+	}
+
+	outputStr := string(output)
+	if strings.Contains(outputStr, "# This comment describes the moved block") {
+		t.Fatalf("leading comment should be removed with --remove-comments:\n%s", outputStr)
+	}
+	if !strings.Contains(outputStr, `resource "aws_instance" "main"`) {
+		t.Fatalf("non-target resource should remain:\n%s", outputStr)
+	}
+}
+
+func TestRemoveBlocksWithRemoveCommentsMultipleLines(t *testing.T) {
+	t.Parallel()
+
+	input := `resource "aws_instance" "main" {
+  ami = "ami-123456"
+}
+
+# Comment line 1
+# Comment line 2
+# Comment line 3
+moved {
+  from = aws_instance.old
+  to   = aws_instance.main
+}
+`
+
+	output, _, err := removeBlocks([]byte(input), "main.tf", []string{"moved"}, true)
+	if err != nil {
+		t.Fatalf("removeBlocks failed: %v", err)
+	}
+
+	outputStr := string(output)
+	if strings.Contains(outputStr, "# Comment line") {
+		t.Fatalf("all leading comment lines should be removed:\n%s", outputStr)
+	}
+}
+
+func TestRemoveBlocksWithRemoveCommentsBlankLineBreaksAssociation(t *testing.T) {
+	t.Parallel()
+
+	input := `resource "aws_instance" "main" {
+  ami = "ami-123456"
+}
+
+# This comment is not associated
+
+moved {
+  from = aws_instance.old
+  to   = aws_instance.main
+}
+`
+
+	output, _, err := removeBlocks([]byte(input), "main.tf", []string{"moved"}, true)
+	if err != nil {
+		t.Fatalf("removeBlocks failed: %v", err)
+	}
+
+	outputStr := string(output)
+	if !strings.Contains(outputStr, "# This comment is not associated") {
+		t.Fatalf("comment separated by blank line should remain:\n%s", outputStr)
+	}
+}
+
+func TestRemoveBlocksWithRemoveCommentsDoubleSlash(t *testing.T) {
+	t.Parallel()
+
+	input := `resource "aws_instance" "main" {
+  ami = "ami-123456"
+}
+
+// This is a double-slash comment
+moved {
+  from = aws_instance.old
+  to   = aws_instance.main
+}
+`
+
+	output, _, err := removeBlocks([]byte(input), "main.tf", []string{"moved"}, true)
+	if err != nil {
+		t.Fatalf("removeBlocks failed: %v", err)
+	}
+
+	outputStr := string(output)
+	if strings.Contains(outputStr, "// This is a double-slash comment") {
+		t.Fatalf("double-slash comment should be removed:\n%s", outputStr)
+	}
+}
+
+func TestRemoveBlocksWithRemoveCommentsFalsePreservesComments(t *testing.T) {
+	t.Parallel()
+
+	input := `resource "aws_instance" "main" {
+  ami = "ami-123456"
+}
+
+# This comment should remain
+moved {
+  from = aws_instance.old
+  to   = aws_instance.main
+}
+`
+
+	output, _, err := removeBlocks([]byte(input), "main.tf", []string{"moved"}, false)
+	if err != nil {
+		t.Fatalf("removeBlocks failed: %v", err)
+	}
+
+	outputStr := string(output)
+	if !strings.Contains(outputStr, "# This comment should remain") {
+		t.Fatalf("comment should be preserved when removeComments=false:\n%s", outputStr)
 	}
 }
 

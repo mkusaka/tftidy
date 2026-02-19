@@ -1,5 +1,5 @@
 name: "tftidy"
-description: "Remove transient blocks (moved, removed, import) from Terraform files"
+description: "Install tftidy - Remove transient blocks (moved, removed, import) from Terraform files"
 author: "mkusaka"
 
 branding:
@@ -7,26 +7,10 @@ branding:
   color: "purple"
 
 inputs:
-  type:
-    description: "Comma-separated block types to remove (moved, removed, import, all)"
+  version:
+    description: "Version of tftidy to install (e.g. v1.2.3 or latest)"
     required: false
-    default: "moved,removed,import"
-  dry-run:
-    description: "Preview changes without modifying files"
-    required: false
-    default: "false"
-  verbose:
-    description: "Show each file being processed"
-    required: false
-    default: "false"
-  normalize-whitespace:
-    description: "Normalize consecutive blank lines after removal"
-    required: false
-    default: "false"
-  directory:
-    description: "Target directory to scan (relative to workspace root)"
-    required: false
-    default: "."
+    default: "latest"
 
 runs:
   using: "composite"
@@ -63,47 +47,19 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
-        ACTION_REF: ${{ github.action_ref }}
         ACTION_REPO: ${{ github.action_repository }}
+        INPUT_VERSION: ${{ inputs.version }}
       run: |
-        ref="${ACTION_REF}"
-        repo="${ACTION_REPO}"
-        # Full semver tag (v1.2.3) -> use directly
-        if echo "${ref}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+'; then
-          echo "tag=${ref}" >> "${GITHUB_OUTPUT}"
-          exit 0
-        fi
-        # Major version tag (v0, v1) -> find latest matching release
-        if echo "${ref}" | grep -qE '^v[0-9]+$'; then
-          tag=$(gh api "repos/${repo}/releases" \
-            --paginate --jq '.[].tag_name' \
-            | grep -E "^${ref}\." \
-            | head -1)
-          if [ -n "${tag}" ]; then
-            echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
-            exit 0
+        if [ "${INPUT_VERSION}" = "latest" ]; then
+          tag=$(gh api "repos/${ACTION_REPO}/releases/latest" --jq '.tag_name')
+          if [ -z "${tag}" ]; then
+            echo "::error::No releases found in ${ACTION_REPO}"
+            exit 1
           fi
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+        else
+          echo "tag=${INPUT_VERSION}" >> "${GITHUB_OUTPUT}"
         fi
-        # Commit SHA -> find the tag pointing at this commit
-        if echo "${ref}" | grep -qE '^[0-9a-f]{7,40}$'; then
-          tag=$(gh api "repos/${repo}/tags" --paginate \
-            --jq ".[] | select(.commit.sha | startswith(\"${ref}\")) | .name" \
-            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-            | head -1)
-          if [ -n "${tag}" ]; then
-            echo "::notice::Resolved commit ${ref} to tag '${tag}'"
-            echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-        fi
-        # Fallback -> latest release
-        tag=$(gh api "repos/${repo}/releases/latest" --jq '.tag_name')
-        if [ -z "${tag}" ]; then
-          echo "::error::No releases found in ${repo}"
-          exit 1
-        fi
-        echo "::notice::Resolved '${ref}' to latest release '${tag}'"
-        echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
 
     - name: Download and install tftidy
       shell: bash
@@ -129,39 +85,3 @@ runs:
         fi
         chmod +x "${dest}/tftidy" 2>/dev/null || true
         echo "${dest}" >> "${GITHUB_PATH}"
-
-    - name: Run tftidy
-      shell: bash
-      env:
-        INPUT_TYPE: ${{ inputs.type }}
-        INPUT_DRY_RUN: ${{ inputs.dry-run }}
-        INPUT_VERBOSE: ${{ inputs.verbose }}
-        INPUT_NORMALIZE_WHITESPACE: ${{ inputs.normalize-whitespace }}
-        INPUT_DIRECTORY: ${{ inputs.directory }}
-      run: |
-        args=()
-        if [ -n "${INPUT_TYPE}" ]; then
-          args+=(--type "${INPUT_TYPE}")
-        fi
-        if [ "${INPUT_DRY_RUN}" = "true" ]; then
-          args+=(--dry-run)
-        fi
-        if [ "${INPUT_VERBOSE}" = "true" ]; then
-          args+=(--verbose)
-        fi
-        if [ "${INPUT_NORMALIZE_WHITESPACE}" = "true" ]; then
-          args+=(--normalize-whitespace)
-        fi
-        if [ -n "${INPUT_DIRECTORY}" ] && [ "${INPUT_DIRECTORY}" != "." ]; then
-          target="${GITHUB_WORKSPACE}/${INPUT_DIRECTORY}"
-        else
-          target="${GITHUB_WORKSPACE}"
-        fi
-        # Prevent path traversal outside workspace
-        resolved=$(realpath -m "${target}")
-        workspace=$(realpath -m "${GITHUB_WORKSPACE}")
-        if [ "${resolved}" != "${workspace}" ] && [ "${resolved##"${workspace}/"}" = "${resolved}" ]; then
-          echo "::error::directory must be within the workspace"
-          exit 1
-        fi
-        tftidy "${args[@]}" "${resolved}"

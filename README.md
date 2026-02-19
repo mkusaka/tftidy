@@ -109,12 +109,13 @@ tftidy --dry-run ./terraform
 
 You can use `tftidy` as a GitHub Action in your workflows.
 
-> **Note**: This action downloads a pre-built binary from [GitHub Releases](https://github.com/mkusaka/tftidy/releases). A release must exist before the action can be used. The `gh` CLI and `bash` are required on the runner (pre-installed on all GitHub-hosted runners).
+> **Note**: This action **installs** the `tftidy` binary and adds it to `PATH`. It does **not** run `tftidy` automatically — you need to invoke it in a subsequent step. The action downloads a pre-built binary from [GitHub Releases](https://github.com/mkusaka/tftidy/releases). A release must exist before the action can be used. The `gh` CLI and `bash` are required on the runner (pre-installed on all GitHub-hosted runners).
 
 ### Basic Usage
 
 ```yaml
 - uses: mkusaka/tftidy@v0
+- run: tftidy
 ```
 
 ### With Options
@@ -122,22 +123,15 @@ You can use `tftidy` as a GitHub Action in your workflows.
 ```yaml
 - uses: mkusaka/tftidy@v0
   with:
-    type: "moved,import"
-    dry-run: "true"
-    verbose: "true"
-    normalize-whitespace: "true"
-    directory: "terraform"
+    version: "v1.2.3"
+- run: tftidy --type moved,import --verbose ./terraform
 ```
 
 ### Inputs
 
-| Input                   | Description                                           | Default               |
-|-------------------------|-------------------------------------------------------|-----------------------|
-| `type`                  | Comma-separated block types to remove (`moved`, `removed`, `import`, `all`) | `moved,removed,import`|
-| `dry-run`               | Preview changes without modifying files               | `false`               |
-| `verbose`               | Show each file being processed                        | `false`               |
-| `normalize-whitespace`  | Normalize consecutive blank lines after removal       | `false`               |
-| `directory`             | Target directory to scan (relative to workspace root) | `.`                   |
+| Input     | Description                                                         | Default    |
+|-----------|---------------------------------------------------------------------|------------|
+| `version` | Version of tftidy to install. Use `latest` or a tag like `v1.2.3`. | `latest`   |
 
 ### Example Workflow
 
@@ -156,9 +150,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: mkusaka/tftidy@v0
-        with:
-          type: "moved,removed,import"
-          verbose: "true"
+
+      - run: tftidy --type moved,removed,import --verbose
 ```
 
 ## Example Files

@@ -114,9 +114,13 @@ You can use `tftidy` as a GitHub Action in your workflows.
 ### Basic Usage
 
 ```yaml
-- uses: mkusaka/tftidy@v0
+- uses: mkusaka/tftidy@v0.0.7
+  with:
+    version: "v0.0.7"
 - run: tftidy
 ```
+
+Pin both the action ref and `version` to the same full release tag for immutable usage. Moving major tags such as `v0` are still supported for tracking the latest compatible release.
 
 ### With Options
 

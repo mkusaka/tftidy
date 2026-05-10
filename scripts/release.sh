@@ -13,6 +13,8 @@ if [ -z "${arg}" ]; then
   exit 1
 fi
 
+git fetch --tags origin
+
 if echo "${arg}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
   # Explicit tag: ./scripts/release.sh v1.2.3
   tag="${arg}"
@@ -48,8 +50,12 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 # Check tag doesn't already exist
-if git rev-parse "${tag}" >/dev/null 2>&1; then
+if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
   echo "Error: tag '${tag}' already exists"
+  exit 1
+fi
+if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+  echo "Error: remote tag '${tag}' already exists"
   exit 1
 fi
 
@@ -76,6 +82,6 @@ echo ""
 echo "Tag '${tag}' pushed. GitHub Actions will:"
 echo "  1. Build binaries for 5 platforms via goreleaser"
 echo "  2. Create GitHub Release with assets"
-echo "  3. Update major version tag (${major_tag})"
+echo "  3. Update major version tag (${major_tag}) without creating a release for it"
 echo ""
 echo "Monitor: https://github.com/mkusaka/tftidy/actions"

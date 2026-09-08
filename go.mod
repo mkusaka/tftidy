@@ -2,7 +2,7 @@ module github.com/mkusaka/tftidy
 
 go 1.24
 
-toolchain go1.27.0
+toolchain go1.27.1
 
 require (
 	github.com/boyter/gocodewalker v1.5.1
